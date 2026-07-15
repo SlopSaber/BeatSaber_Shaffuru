@@ -89,21 +89,21 @@ namespace Shaffuru.GameLogic {
 				beatmapObjectSpawnController._disableSpawning = !enable;
 		}
 
-		public void SwitchToDifferentBeatmap(IDifficultyBeatmap difficultyBeatmap, IReadonlyBeatmapData replacementBeatmapData, float startTime, float secondsToInsert = 0) {
+		public void SwitchToDifferentBeatmap(BeatmapLevel replacementLevel, BeatmapKey replacementKey, IReadonlyBeatmapData replacementBeatmapData, UnityEngine.AudioClip replacementAudioClip, float startTime, float secondsToInsert = 0) {
 			SharedCoroutineStarter.instance.StartCoroutine(NoSpawnZone());
 
 			IEnumerator NoSpawnZone() {
 				SetSpawningEnabled(false);
 				HeckOffCutSoundsCrash.enablePatch = true;
 
-				yield return Switcher(difficultyBeatmap, replacementBeatmapData, startTime, secondsToInsert);
+				yield return Switcher(replacementLevel, replacementKey, replacementBeatmapData, replacementAudioClip, startTime, secondsToInsert);
 
 				HeckOffCutSoundsCrash.enablePatch = false;
 				SetSpawningEnabled(true);
 			}
 		}
 
-		IEnumerator Switcher(IDifficultyBeatmap replacementDifficultyBeatmap, IReadonlyBeatmapData replacementBeatmapData, float startTime, float secondsToInsert = 0) {
+		IEnumerator Switcher(BeatmapLevel replacementLevel, BeatmapKey replacementKey, IReadonlyBeatmapData replacementBeatmapData, UnityEngine.AudioClip replacementAudioClip, float startTime, float secondsToInsert = 0) {
 			var reactionTime = Config.Instance.transition_reactionTime;
 			var dissolveTime = reactionTime * 0.6f;
 
@@ -114,7 +114,7 @@ namespace Shaffuru.GameLogic {
 				
 				audioTimeWrapper.Pause();
 
-				customAudioSource.SetClip(replacementDifficultyBeatmap.level.beatmapLevelData.audioClip);
+				customAudioSource.SetClip(replacementAudioClip);
 
 				yield return new WaitForSecondsRealtime(dissolveTime * 0.2f);
 				yield return ramCleaner.ClearRam();
@@ -202,15 +202,19 @@ namespace Shaffuru.GameLogic {
 
 			if(beatmapObjectSpawnController != null) {
 				// Update to the new maps stuffs
-				var njs = replacementDifficultyBeatmap.noteJumpMovementSpeed;
+				// VERIFY: see the "VERIFY" note on BeatmapLoader.GetDifficultyBeatmapData - this replaces the old
+				// IDifficultyBeatmap.noteJumpMovementSpeed/.noteJumpStartBeatOffset/.difficulty access
+				var replacementBeatmapBasicData = BeatmapLoader.GetDifficultyBeatmapData(replacementLevel, replacementKey);
+
+				var njs = replacementBeatmapBasicData.noteJumpMovementSpeed;
 				if(njs == 0)
-					njs = BeatmapDifficultyMethods.NoteJumpMovementSpeed(replacementDifficultyBeatmap.difficulty);
+					njs = BeatmapDifficultyMethods.NoteJumpMovementSpeed(replacementKey.difficulty);
 
 				// This updates the spawnAheadTime amonguser things
 				UpdateBeatmapObjectSpawnControllerInitData(
-					replacementDifficultyBeatmap.level.beatsPerMinute,
+					replacementLevel.beatsPerMinute,
 					njs,
-					replacementDifficultyBeatmap.noteJumpStartBeatOffset,
+					replacementBeatmapBasicData.noteJumpStartBeatOffset,
 					replacementBeatmapData.numberOfLines
 				);
 			}
@@ -247,7 +251,7 @@ namespace Shaffuru.GameLogic {
 			// New audio
 			// This is where I would go ahead and fiddle with the AudioTimeSync controller and swap out the audio clip etc
 			// But that would be a MASSIVE pain, so why dont we just create our own audioclip and sync that to the normal sync controller? :)
-			customAudioSource.SetClip(replacementDifficultyBeatmap.level.beatmapLevelData.audioClip);
+			customAudioSource.SetClip(replacementAudioClip);
 			customAudioSource.Play(startTime + (audioTimeWrapper.songTime - timePre));
 
 			HeckOffCutSoundsCrash.enablePatch = false;

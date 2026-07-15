@@ -1,30 +1,40 @@
 ﻿using System;
-using System.Linq;
-using System.Reflection;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using BeatmapEditor3D;
 using HarmonyLib;
-using Polyglot;
 using Shaffuru.GameLogic;
 using SiraUtil.Zenject;
 using UnityEngine;
 using Zenject;
 
 namespace Shaffuru.MenuLogic {
+	/*
+	 * VERIFIED (2024/1.39.1 rewrite) against the real assemblies for this exact game version - all the types/ctors
+	 * used below (BeatmapLevel, BeatmapKey, BeatmapBasicData, BeatmapEditor3D.BeatmapLevelData,
+	 * MenuTransitionsHelper.StartStandardLevel's IBeatmapLevelData overload) were dumped from Main.dll/DataModels.dll
+	 * /BeatSaber.BeatmapEditor.dll directly. BeatmapLevelSO/BeatmapDataSO from the old code no longer exist for this
+	 * purpose at all - BeatmapLevelSO is now purely menu-preview metadata with no way to attach real difficulty data,
+	 * so the "fake playable level" now has to be a real BeatmapLevel + a real BeatmapEditor3D.BeatmapLevelData
+	 * (which happily accepts raw json strings, same trick as the old SetJsonData did) instead.
+	 */
 	class Anlasser {
 		public const string LevelIdPrefix = "___Shaffuru_";
 
 		readonly PlayerDataModel playerDataModel;
 		readonly MenuTransitionsHelper menuTransitionsHelper;
-
+		readonly EnvironmentsListModel environmentsListModel;
 
 		static int lastShaffuruMapLength = 0;
-		public readonly static BeatmapLevelSO beatmapLevel = ScriptableObject.CreateInstance<BeatmapLevelSO>();
-		readonly static BeatmapDataSO beatmapLevelData = ScriptableObject.CreateInstance<BeatmapDataSO>();
-		public readonly static BeatmapLevelSO.DifficultyBeatmap difficultyBeatmap = new BeatmapLevelSO.DifficultyBeatmap(beatmapLevel, BeatmapDifficulty.ExpertPlus, 0, 10, 0, 0, beatmapLevelData);
-		
+
+		public static BeatmapLevel beatmapLevel { get; private set; }
+		public static BeatmapKey beatmapKey { get; private set; }
+		static BeatmapEditor3D.BeatmapLevelData beatmapLevelData;
+		static AudioClip fakeAudioClip;
+
 		static UBinder<Plugin, System.Random> rngSource;
 
-
-		static EnvironmentInfoSO defaultEnvironment;
+		static EnvironmentName defaultEnvironment;
 		public static BeatmapCharacteristicSO standardCharacteristic { get; private set; }
 
 		public Anlasser(
@@ -32,91 +42,113 @@ namespace Shaffuru.MenuLogic {
 			CustomLevelLoader customLevelLoader,
 			[InjectOptional] MenuTransitionsHelper menuTransitionsHelper,
 			BeatmapCharacteristicCollection beatmapCharacteristicCollection,
+			[InjectOptional] EnvironmentsListModel environmentsListModel,
 			UBinder<Plugin, System.Random> rng
 		) {
 			this.playerDataModel = playerDataModel;
 			this.menuTransitionsHelper = menuTransitionsHelper;
+			this.environmentsListModel = environmentsListModel;
 
 			rngSource = rng;
 
-			defaultEnvironment ??= customLevelLoader.LoadEnvironmentInfo("", false);
+			defaultEnvironment = customLevelLoader.CreateEnvironmentName("", customLevelLoader._defaultEnvironmentInfo);
 			standardCharacteristic = beatmapCharacteristicCollection.GetBeatmapCharacteristicBySerializedName("Standard");
 		}
 
 		public event Action<LevelCompletionResults> finishedOrFailedCallback;
 
+		// Bare-bones IPreviewMediaData for our fake level - we don't have (or need) a real preview clip
+		class FakePreviewMediaData : IPreviewMediaData {
+			public Task<Sprite> GetCoverSpriteAsync() => Task.FromResult(SongCore.Loader.defaultCoverImage);
+			public Task<AudioClip> GetPreviewAudioClip() => Task.FromResult(fakeAudioClip);
+			public void UnloadPreviewAudioClip() { }
+			public void UnloadCoverSprite() { }
+		}
 
-		static readonly IPA.Utilities.FieldAccessor<BeatmapLevelData, AudioClip>.Accessor BeatmapLevelData_audioClip =
-			IPA.Utilities.FieldAccessor<BeatmapLevelData, AudioClip>.GetAccessor("_audioClip");
-
-		static readonly IPA.Utilities.FieldAccessor<BeatmapLevelSO, string>.Accessor BeatmapLevelSO_songName =
-			IPA.Utilities.FieldAccessor<BeatmapLevelSO, string>.GetAccessor("_songName");
-
-		static readonly IPA.Utilities.FieldAccessor<BeatmapLevelSO, string>.Accessor BeatmapLevelSO_levelID =
-			IPA.Utilities.FieldAccessor<BeatmapLevelSO, string>.GetAccessor("_levelID");
+		static readonly FakePreviewMediaData previewMediaData = new FakePreviewMediaData();
 
 		public void UpdateFakeBeatmap(int lengthSeconds) {
-			if(lengthSeconds > 120 * 60)
+			if(lengthSeconds > 480 * 60)
 				throw new ArgumentOutOfRangeException();
 
-			// for ref access
-			var beatmapLevel = Anlasser.beatmapLevel;
+			const float bpm = 13.37f;
+			const BeatmapDifficulty difficulty = BeatmapDifficulty.ExpertPlus;
 
-			var isFirst = beatmapLevel.songAudioClip == null;
+			var levelId = $"{LevelIdPrefix}{lengthSeconds}";
 
 			if(lastShaffuruMapLength != lengthSeconds) {
-				if(beatmapLevel.songAudioClip != null)
-					GameObject.Destroy(beatmapLevel.songAudioClip);
+				if(fakeAudioClip != null)
+					GameObject.Destroy(fakeAudioClip);
 
-				var audioClip = AudioClip.Create("", lengthSeconds * 1000, 1, 1000, false);
+				fakeAudioClip = AudioClip.Create("", lengthSeconds * 1000, 1, 1000, false);
 
-				beatmapLevel._audioClip = audioClip;
-				if(beatmapLevel.beatmapLevelData is BeatmapLevelData b)
-					BeatmapLevelData_audioClip(ref b) = audioClip;
 				lastShaffuruMapLength = lengthSeconds;
 			}
-
-			const float bpm = 13.37f;
 
 			var comedy = (DateTime.Now.Day == 1 && DateTime.Now.Month == 4) || rngSource.Value.NextDouble() >= 0.98;
 			var a = (bpm * ((lengthSeconds - 1) / 60f)).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
 
+			string beatmapJson;
+
 			if(comedy) {
-				beatmapLevelData.SetJsonData(@"{""version"":""3.0.0"",""basicBeatmapEvents"":[{""i"":3,""f"":3}],""colorNotes"":[{""b"":0.33,""x"":1,""y"":1,""d"":8},{""b"":" + a + @",""x"":1,""y"":1,""d"":8}],""bombNotes"":[],""obstacles"":[{""b"":0.33,""y"":2,""d"":0.02,""w"":1,""h"":-3},{""b"":0.33,""x"":2,""y"":2,""d"":0.02,""w"":1,""h"":-3},{""b"":0.33,""y"":2,""d"":0.02,""w"":3,""h"":1},{""b"":0.33,""x"":1,""y"":0,""d"":0.02,""w"":1,""h"":1},{""b"":0.33,""x"":3,""d"":0.02,""w"":1,""h"":2},{""b"":" + a + @",""x"":0,""d"":0.03,""w"":4,""h"":5}],""bpmEvents"":[],""rotationEvents"":[],""sliders"":[],""burstSliders"":[],""waypoints"":[],""colorBoostBeatmapEvents"":[],""lightColorEventBoxGroups"":[],""lightRotationEventBoxGroups"":[],""basicEventTypesWithKeywords"":[],""useNormalEventsAsCompatibleEvents"":true}");
+				beatmapJson = @"{""version"":""3.0.0"",""basicBeatmapEvents"":[{""i"":3,""f"":3}],""colorNotes"":[{""b"":0.33,""x"":1,""y"":1,""d"":8},{""b"":" + a + @",""x"":1,""y"":1,""d"":8}],""bombNotes"":[],""obstacles"":[{""b"":0.33,""y"":2,""d"":0.02,""w"":1,""h"":-3},{""b"":0.33,""x"":2,""y"":2,""d"":0.02,""w"":1,""h"":-3},{""b"":0.33,""y"":2,""d"":0.02,""w"":3,""h"":1},{""b"":0.33,""x"":1,""y"":0,""d"":0.02,""w"":1,""h"":1},{""b"":0.33,""x"":3,""d"":0.02,""w"":1,""h"":2},{""b"":" + a + @",""x"":0,""d"":0.03,""w"":4,""h"":5}],""bpmEvents"":[],""rotationEvents"":[],""sliders"":[],""burstSliders"":[],""waypoints"":[],""colorBoostBeatmapEvents"":[],""lightColorEventBoxGroups"":[],""lightRotationEventBoxGroups"":[],""basicEventTypesWithKeywords"":[],""useNormalEventsAsCompatibleEvents"":true}";
 			} else {
-				beatmapLevelData.SetJsonData(@"{""_version"":""2.2.0"",""_events"":[{""_value"":3}],""_notes"":[{""_time"":0.5,""_lineIndex"":1,""_cutDirection"":1},{""_time"":0.5,""_lineIndex"":1,""_lineLayer"":1,""_cutDirection"":1},{""_time"":0.5,""_lineIndex"":1,""_lineLayer"":2,""_cutDirection"":1},{""_time"":0.5,""_lineIndex"":2,""_type"":1,""_cutDirection"":8},{""_time"":" + a + @"}],""_obstacles"":[{""_time"":0.4,""_lineIndex"":3,""_duration"":3,""_width"":1},{""_time"":0.4,""_duration"":3,""_width"":1},{""_time"":" + a + @",""_duration"":0.1,""_width"":4}],""_waypoints"":[]}");
+				beatmapJson = @"{""version"":""3.0.0"",""basicBeatmapEvents"":[{""b"":0,""et"":3,""i"":0,""f"":3}],""colorNotes"":[{""b"":0.5,""x"":1,""y"":0,""c"":1,""d"":1},{""b"":0.5,""x"":1,""y"":1,""c"":1,""d"":1},{""b"":0.5,""x"":1,""y"":2,""c"":1,""d"":1},{""b"":0.5,""x"":2,""y"":0,""c"":0,""d"":8},{""b"":" + a + @",""x"":1,""y"":1,""c"":0,""d"":8}],""bombNotes"":[],""obstacles"":[{""b"":0.4,""x"":3,""y"":0,""d"":3,""w"":1,""h"":5},{""b"":0.4,""x"":0,""y"":0,""d"":3,""w"":1,""h"":5},{""b"":" + a + @",""x"":0,""y"":0,""d"":0.1,""w"":4,""h"":5}],""bpmEvents"":[],""rotationEvents"":[],""sliders"":[],""burstSliders"":[],""waypoints"":[],""colorBoostBeatmapEvents"":[],""lightColorEventBoxGroups"":[],""lightRotationEventBoxGroups"":[],""basicEventTypesWithKeywords"":[],""useNormalEventsAsCompatibleEvents"":true}";
 			}
 
-			if(isFirst) {
-				beatmapLevel.InitFull(
-					LevelIdPrefix,
-					"Shaffuru",
-					"",
-					"Kinsi55",
-					"Kinsi55",
-					beatmapLevel.songAudioClip,
-					bpm,
-					0,
-					0,
-					0,
-					0,
-					0,
-					SongCore.Loader.defaultCoverImage,
-					defaultEnvironment,
-					defaultEnvironment,
-					new EnvironmentInfoSO[] { },
-					new[] { new BeatmapLevelSO.DifficultyBeatmapSet(standardCharacteristic, new[] { difficultyBeatmap }) }
-				);
-			}
+			// VERIFY: audioSaveDataJson's exact expected schema is unconfirmed - this is a minimal AudioData v4-ish
+			// stub. If the game throws trying to parse this, check what schema BeatmapEditor3D.BeatmapLevelData /
+			// whatever consumes _audioSaveDataJson actually expects (dotPeek/ILSpy on BeatSaber.BeatmapEditor.dll).
+			var audioJson = @"{""version"":""4.0.0"",""songChecksum"":"""",""songSampleCount"":0,""songFrequency"":0,""bpmData"":[],""lufsData"":[]}";
+			var lightshowJson = @"{""version"":""4.0.0"",""waypoints"":[],""basicEvents"":[],""colorBoostEvents"":[],""eventBoxGroups"":[]}";
 
-			BeatmapLevelSO_songName(ref beatmapLevel) = $"Shaffuru ({lengthSeconds / 60} Minutes)";
-			BeatmapLevelSO_levelID(ref beatmapLevel) = $"{LevelIdPrefix}{lengthSeconds}";
+			beatmapLevelData = new BeatmapEditor3D.BeatmapLevelData(
+				"Shaffuru",
+				fakeAudioClip,
+				audioJson,
+				beatmapJson,
+				lightshowJson
+			);
+
+			var beatmapBasicData = new BeatmapBasicData(
+				noteJumpMovementSpeed: 10,
+				noteJumpStartBeatOffset: 0,
+				environmentName: defaultEnvironment,
+				beatmapColorScheme: null,
+				notesCount: comedy ? 2 : 5,
+				cuttableObjectsCount: comedy ? 2 : 5,
+				obstaclesCount: comedy ? 6 : 3,
+				bombsCount: 0,
+				mappers: new[] { "Kinsi55" },
+				lighters: new[] { "Kinsi55" }
+			);
+
+			var beatmapBasicDatas = new Dictionary<(BeatmapCharacteristicSO, BeatmapDifficulty), BeatmapBasicData> {
+				[(standardCharacteristic, difficulty)] = beatmapBasicData
+			};
+
+			beatmapLevel = new BeatmapLevel(
+				version: 1,
+				hasPrecalculatedData: false,
+				levelID: levelId,
+				songName: $"Shaffuru ({lengthSeconds / 60} Minutes)",
+				songSubName: "",
+				songAuthorName: "Kinsi55",
+				allMappers: new[] { "Kinsi55" },
+				allLighters: new[] { "Kinsi55" },
+				beatsPerMinute: bpm,
+				integratedLufs: 0,
+				songTimeOffset: 0,
+				previewStartTime: 0,
+				previewDuration: 0,
+				songDuration: lengthSeconds,
+				contentRating: default,
+				previewMediaData: previewMediaData,
+				beatmapBasicData: beatmapBasicDatas
+			);
+
+			beatmapKey = new BeatmapKey(levelId, standardCharacteristic, difficulty);
 		}
-
-		static MethodInfo StartStandardLevelMethod = typeof(MenuTransitionsHelper).GetMethods().FirstOrDefault(
-			x => x.Name == nameof(MenuTransitionsHelper.StartStandardLevel) &&
-			x.GetParameters().Any(x => x.Name == "afterSceneSwitchCallback")
-		);
 
 		public void Start(int lengthSeconds, int rngSeed = 0) {
 			if(rngSeed != 0)
@@ -124,7 +156,7 @@ namespace Shaffuru.MenuLogic {
 
 			UpdateFakeBeatmap(lengthSeconds);
 
-			var endCallback = new Action<LevelScenesTransitionSetupDataSO, LevelCompletionResults>((a, b) => {
+			var endCallback = new Action<StandardLevelScenesTransitionSetupDataSO, LevelCompletionResults>((a, b) => {
 				if(b.levelEndAction == LevelCompletionResults.LevelEndAction.Restart) {
 					Start(lengthSeconds);
 					return;
@@ -141,21 +173,27 @@ namespace Shaffuru.MenuLogic {
 				}
 			});
 
+			var key = beatmapKey;
+
 			menuTransitionsHelper.StartStandardLevel(
 				"Shaffuru",
-				difficultyBeatmap,
+				in key,
 				beatmapLevel,
+				beatmapLevelData,
 				playerDataModel.playerData.overrideEnvironmentSettings,
 				playerDataModel.playerData.colorSchemesSettings.GetOverrideColorScheme(),
 				playerDataModel.playerData.colorSchemesSettings.GetOverrideColorScheme(),
 				playerDataModel.playerData.gameplayModifiers,
 				playerDataModel.playerData.playerSpecificSettings,
 				null,
-				Localization.Get("BUTTON_MENU"),
+				environmentsListModel,
+				"Menu",
 				false,
 				false,
 				null,
+				null,
 				endCallback,
+				null,
 				null
 			);
 		}

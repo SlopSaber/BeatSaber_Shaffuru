@@ -23,11 +23,11 @@ namespace Shaffuru.AppLogic {
 		}
 
 		public struct ValidSong {
-			public IPreviewBeatmapLevel level;
+			public BeatmapLevel level;
 			// I really didnt want a ref type per song just to store the valid diffs, so I store all valid diffs as a bitsum
 			public int validDiffs;
 
-			public ValidSong(IPreviewBeatmapLevel level) {
+			public ValidSong(BeatmapLevel level) {
 				this.level = level;
 				validDiffs = 0;
 			}
@@ -81,9 +81,11 @@ namespace Shaffuru.AppLogic {
 		public static bool supportsMappingExtensions => IPA.Loader.PluginManager.GetPluginFromId("MappingExtensions") != null;
 		bool allowMappingExtensions = false;
 
-		ValidSong LevelFilterCheck(IPreviewBeatmapLevel level, ConditionalWeakTable<IPreviewBeatmapLevel, BeatmapDifficulty[]> playlistSongs = null, bool forceNoFilters = false) {
+		ValidSong LevelFilterCheck(BeatmapLevel level, Dictionary<string, BeatmapDifficulty[]> playlistSongs = null, bool forceNoFilters = false) {
 			if(!forceNoFilters) {
-				if(level.songDuration - level.songTimeOffset < minSongLength)
+				// NOTE: songTimeOffset no longer exists as a separate field on BeatmapLevel - songDuration appears
+				// to already reflect the actual playable length by itself now.
+				if(level.songDuration < minSongLength)
 					return default;
 
 				if(currentFilterConfig.enableAdvancedFilters && level.beatsPerMinute < currentFilterConfig.advanced_bpm_min)
@@ -92,7 +94,7 @@ namespace Shaffuru.AppLogic {
 
 			BeatmapDifficulty[] playlistDiffs = null;
 
-			if(playlistSongs?.TryGetValue(level, out playlistDiffs) == false)
+			if(playlistSongs != null && !playlistSongs.TryGetValue(level.levelID, out playlistDiffs))
 				return default;
 
 			var songHash = MapUtil.GetHashOfPreview(level);
@@ -115,51 +117,52 @@ namespace Shaffuru.AppLogic {
 				}
 			}
 
-			foreach(var beatmapSet in level.previewDifficultyBeatmapSets) {
-				// For now we limit to just Standard characteristic. This might not be necessary
-				if(beatmapSet.beatmapCharacteristic != Anlasser.standardCharacteristic)
-					continue;
+			// For now we limit to just Standard characteristic. This might not be necessary
+			var standardDiffs = level.GetBeatmapKeys()
+				.Where(k => k.beatmapCharacteristic == Anlasser.standardCharacteristic)
+				.Select(k => k.difficulty)
+				.ToArray();
 
-				var songDetailsSong = SongDetailsCache.Structs.Song.none;
-				var validDiffsSongdetailsFilterCheck = int.MaxValue;
+			if(standardDiffs.Length == 0)
+				return default;
 
-				// If advanced filters are on the song needs to exist in SongDetails.. because we need that info to filter with
-				if(!forceNoFilters && currentFilterConfig.enableAdvancedFilters) {
-					if(songHash == null || !SongDetailsUtil.instance.songs.FindByHash(songHash, out songDetailsSong))
-						break;
+			var songDetailsSong = SongDetailsCache.Structs.Song.none;
+			var validDiffsSongdetailsFilterCheck = int.MaxValue;
 
-					if(!SongdetailsFilterCheck(songDetailsSong, out validDiffsSongdetailsFilterCheck, false))
-						break;
-				}
+			// If advanced filters are on the song needs to exist in SongDetails.. because we need that info to filter with
+			if(!forceNoFilters && currentFilterConfig.enableAdvancedFilters) {
+				if(songHash == null || !SongDetailsUtil.instance.songs.FindByHash(songHash, out songDetailsSong))
+					return default;
 
-				var validSonge = new ValidSong(level);
-
-				foreach(var beatmapDiff in beatmapSet.beatmapDifficulties) {
-					// playlistDiffs is only created if the playlist entry actually has any highlit diffs (And the option is enabled)
-					if(playlistDiffs?.Contains(beatmapDiff) == false)
-						continue;
-
-					// mappedExtraData will be null for OST
-					if(mappedExtraData != null) {
-						if(!mappedExtraData.TryGetValue(beatmapDiff, out var extradata))
-							continue;
-
-						var r = extradata.additionalDifficultyData._requirements;
-
-						// I have a feeling any requirements in the map would be BAAAD
-						if(r.Length != 0 && (!allowMappingExtensions || Array.Exists(r, x => x != "Mapping Extensions")))
-							continue;
-					}
-
-					validSonge.SetDiffValid(beatmapDiff);
-				}
-
-				validSonge.validDiffs &= validDiffsSongdetailsFilterCheck;
-
-				return validSonge;
+				if(!SongdetailsFilterCheck(songDetailsSong, out validDiffsSongdetailsFilterCheck, false))
+					return default;
 			}
 
-			return default;
+			var validSonge = new ValidSong(level);
+
+			foreach(var beatmapDiff in standardDiffs) {
+				// playlistDiffs is only created if the playlist entry actually has any highlit diffs (And the option is enabled)
+				if(playlistDiffs?.Contains(beatmapDiff) == false)
+					continue;
+
+				// mappedExtraData will be null for OST
+				if(mappedExtraData != null) {
+					if(!mappedExtraData.TryGetValue(beatmapDiff, out var extradata))
+						continue;
+
+					var r = extradata.additionalDifficultyData._requirements;
+
+					// I have a feeling any requirements in the map would be BAAAD
+					if(r.Length != 0 && (!allowMappingExtensions || Array.Exists(r, x => x != "Mapping Extensions")))
+						continue;
+				}
+
+				validSonge.SetDiffValid(beatmapDiff);
+			}
+
+			validSonge.validDiffs &= validDiffsSongdetailsFilterCheck;
+
+			return validSonge;
 		}
 
 		/// <param name="fullCheck">Can be used to disable some checks that would be redundant when called from LevelFilterCheck</param>
@@ -197,8 +200,10 @@ namespace Shaffuru.AppLogic {
 					if(nps < currentFilterConfig.advanced_nps_min || nps > currentFilterConfig.advanced_nps_max)
 						continue;
 
-					if(currentFilterConfig.advanced_only_ranked && !diff.ranked)
-						continue;
+				// VERIFY: SongDifficulty has no "ranked" bool and MapMods has no Ranked flag - using the
+				// stars > 0 convention (unranked maps report 0 stars in SongDetailsCache) as the closest equivalent.
+				if(currentFilterConfig.advanced_only_ranked && diff.stars <= 0)
+					continue;
 				}
 
 				if(fullCheck) {
@@ -217,7 +222,7 @@ namespace Shaffuru.AppLogic {
 		}
 
 
-		public bool AddRequestableLevel(IPreviewBeatmapLevel level, bool forceNoFilters = false) {
+		public bool AddRequestableLevel(BeatmapLevel level, bool forceNoFilters = false) {
 			var hash = MapUtil.GetHashOfPreview(level);
 
 			if(hash == null)
@@ -248,13 +253,16 @@ namespace Shaffuru.AppLogic {
 		public async Task ProcessBeatmapPool(bool forceNoFilters = false) {
 			minSongLength = Config.Instance.jumpcut_enabled ? Math.Max(currentFilterConfig.minSeconds, Config.Instance.jumpcut_minSeconds) : currentFilterConfig.minSeconds;
 
-			var maps = beatmapLevelsModel
-				.allLoadedBeatmapLevelPackCollection.beatmapLevelPacks
-				.Where(x => !(x is PreviewBeatmapLevelPackSO))
-				.SelectMany(x => x.beatmapLevelCollection.beatmapLevels);
+			/*
+			 * NOTE (2024 rewrite): The old pack/collection hierarchy (allLoadedBeatmapLevelPackCollection ->
+			 * beatmapLevelPacks -> beatmapLevelCollection.beatmapLevels, with a separate PreviewBeatmapLevelPackSO
+			 * to filter out) is gone now that BeatmapLevel unifies preview and full level data. Every loaded level -
+			 * base game and custom - lives flat in this repository instead.
+			 */
+			var maps = beatmapLevelsModel._allLoadedBeatmapLevelsRepository._idToBeatmapLevel.Values.AsEnumerable();
 
 			if(!forceNoFilters)
-				maps = maps.Where(x => x.songDuration - x.songTimeOffset >= minSongLength);
+				maps = maps.Where(x => x.songDuration >= minSongLength);
 
 			/*
 			 * Not completely sure if this is necessary. This is trying to always have the levelids of levels which
@@ -262,7 +270,7 @@ namespace Shaffuru.AppLogic {
 			 */
 			maps = maps.OrderBy(x => x.levelID.Length);
 
-			ConditionalWeakTable<IPreviewBeatmapLevel, BeatmapDifficulty[]> playlistSongs = null;
+			Dictionary<string, BeatmapDifficulty[]> playlistSongs = null;
 
 			if(!forceNoFilters &&
 				Config.Instance.filter_playlist != Config.filter_playlist_default && 

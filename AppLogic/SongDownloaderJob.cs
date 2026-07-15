@@ -27,10 +27,6 @@ namespace Shaffuru.AppLogic {
 
 		static readonly char[] InvalidPathChars = Path.GetInvalidFileNameChars();
 
-		static readonly MethodInfo SongCore_LoadSongAndAddToDictionaries = IPA.Loader.PluginManager.GetPluginFromId("SongCore")?
-			.Assembly.GetType("SongCore.Loader")?
-			.GetMethod("LoadSongAndAddToDictionaries", BindingFlags.NonPublic | BindingFlags.Instance);
-
 		static readonly string UserAgent = "Shaffuru/" + Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
 		public unsafe void Execute() {
 			try {
@@ -49,13 +45,17 @@ namespace Shaffuru.AppLogic {
 					if(p == null)
 						return;
 
-					var data = SongCore.Loader.Instance.LoadCustomLevelSongData(p);
+					// VERIFY: SongCore.Loader.LoadCustomLevel's second parameter is SongCore.Data.SongFolderEntry -
+					// I don't have its shape confirmed, `default` is a guess (fine if it's a reference type and null
+					// is an acceptable "just use defaults" value, wrong if it's a struct requiring real fields).
+					var result = SongCore.Loader.LoadCustomLevel(p, default);
 
-					var preview = (CustomPreviewBeatmapLevel)SongCore_LoadSongAndAddToDictionaries.Invoke(SongCore.Loader.Instance, new object[] {
-						CancellationToken.None, data, p, null
-					});
+					if(result == null)
+						return;
 
-					BeatmapLoader.AddBeatmapToLoadedPreviewBeatmaps(preview.levelID, preview);
+					var (levelId, preview) = result.Value;
+
+					BeatmapLoader.AddBeatmapToLoadedPreviewBeatmaps(levelId, preview);
 
 					MapPool.instance.AddRequestableLevel(preview);
 				}

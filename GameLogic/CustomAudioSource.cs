@@ -24,6 +24,7 @@ namespace Shaffuru.GameLogic {
 
 		public CustomAudioSource(
 			GameplayCoreSceneSetupData gameplayCoreSceneSetupData,
+			SettingsManager settingsManager,
 			AudioTimeWrapper audioTimeWrapper
 		) {
 			// The fact that I have to do this is complete garbage
@@ -36,7 +37,11 @@ namespace Shaffuru.GameLogic {
 
 			this.audioTimeWrapper = audioTimeWrapper;
 
-			audioLatency = gameplayCoreSceneSetupData.mainSettingsModel.audioLatency;
+			// VERIFY: mainSettingsModel no longer exists on GameplayCoreSceneSetupData - SettingsManager is confirmed
+			// to be a real injectable type (seen as a field on MenuTransitionsHelper), but the exact path to
+			// audioLatency here (settings.audio.audioLatency) is an educated guess, not confirmed against the
+			// real assembly. If this doesn't compile, dump SettingsManager/Settings with the inspector tool.
+			audioLatency = settingsManager.settings.audio.latency;
 
 			source = new GameObject("CAS", typeof(AudioSource)).GetComponent<AudioSource>();
 

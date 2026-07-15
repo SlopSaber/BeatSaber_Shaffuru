@@ -30,7 +30,7 @@ namespace Shaffuru.MenuLogic.UI {
 			}
 		}
 
-		private void Resultui_playSong(IPreviewBeatmapLevel obj) {
+		private void Resultui_playSong(BeatmapLevel obj) {
 			_parentFlow.DismissFlowCoordinator(this, immediately: true);
 			SharedCoroutineStarter.instance.StartCoroutine(PlaySonge(obj));
 		}
@@ -40,11 +40,11 @@ namespace Shaffuru.MenuLogic.UI {
 		[Inject] readonly LevelFilteringNavigationController levelFilteringNavigationController = null;
 		[InjectOptional] readonly LevelCollectionNavigationController levelCollectionNavigationController = null;
 
-		IEnumerator PlaySonge(IPreviewBeatmapLevel songe) {
+		IEnumerator PlaySonge(BeatmapLevel songe) {
 			mainFlowCoordinator.HandleMainMenuViewControllerDidFinish(null, MainMenuViewController.MenuButton.SoloFreePlay);
 			yield return null;
 
-			levelSearchViewController?.ResetCurrentFilterParams();
+			levelSearchViewController?.ResetAllFilterSettings(false);
 			levelFilteringNavigationController.UpdateCustomSongs();
 
 			if(levelFilteringNavigationController.selectedLevelCategory != LevelCategory.All)
@@ -52,7 +52,7 @@ namespace Shaffuru.MenuLogic.UI {
 
 			yield return new WaitForEndOfFrame();
 			// Reset again here. This is kind of a duct-tape fix for an edge-case of better song list
-			levelSearchViewController?.ResetCurrentFilterParams();
+			levelSearchViewController?.ResetAllFilterSettings(false);
 			levelCollectionNavigationController?.SelectLevel(songe);
 		}
 
@@ -90,8 +90,12 @@ namespace Shaffuru.MenuLogic.UI {
 		static ShaffuruFlowCoordinator instance;
 
 		public void Initialize() {
+			// VERIFY: MenuButtons no longer has a directly-declared "instance" member - it inherits from
+			// BeatSaberMarkupLanguage.Util.ZenjectSingleton<MenuButtons>. Guessing "Instance" (capital I) based on
+			// the same convention SongCore.Loader uses, but this wasn't directly confirmed - if wrong, dump
+			// ZenjectSingleton`1 with the inspector tool to see its actual static accessor.
 			if(instance == null)
-				MenuButtons.instance.RegisterButton(new MenuButton("Shaffuru", " iufrkjedsfios", () => {
+				MenuButtons.Instance.RegisterButton(new MenuButton("Shaffuru", " iufrkjedsfios", () => {
 					instance.gameplaySetupViewController.Setup(true, true, true, false, PlayerSettingsPanelController.PlayerSettingsPanelLayout.Singleplayer);
 					instance.ShowSetupView();
 				}, true));

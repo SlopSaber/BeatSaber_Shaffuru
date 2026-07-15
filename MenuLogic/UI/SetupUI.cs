@@ -52,7 +52,7 @@ namespace Shaffuru.MenuLogic.UI {
 		void PreparePlaylistStuff(bool rebuild = true) {
 			var hasLib = IPA.Loader.PluginManager.GetPluginFromId("BeatSaberPlaylistsLib") != null;
 			if(playlistDropdown != null)
-				playlistDropdown.interactable = hasLib;
+				playlistDropdown.Interactable = hasLib;
 
 			if(!rebuild)
 				return;
@@ -64,7 +64,7 @@ namespace Shaffuru.MenuLogic.UI {
 		}
 
 		void LoadPlaylistsList() {
-			playlists.AddRange(BeatSaberPlaylistsLib.PlaylistManager.DefaultManager.GetAllPlaylists(true).Select(x => x.packName).Distinct());
+			playlists.AddRange(BeatSaberPlaylistsLib.PlaylistManager.DefaultManager.GetAllPlaylists(true).Select(x => x.Title).Distinct());
 
 			if(playlistDropdown != null) {
 				playlistDropdown.UpdateChoices();
@@ -104,6 +104,13 @@ namespace Shaffuru.MenuLogic.UI {
 
 			startLevelButton.interactable = false;
 			filteredSongsLabel.text = $"Filtering levels...";
+
+			if(playDurationSlider != null) {
+				playDurationSlider.Slider.maxValue = maxPlayDuration;
+				playDuration = Mathf.Clamp(playDuration, 3, maxPlayDuration);
+				playDurationSlider.ReceiveValue();
+			}
+
 			parserParams.EmitEvent("OpenStartModal");
 			var playable = 0;
 			try {
@@ -128,6 +135,8 @@ namespace Shaffuru.MenuLogic.UI {
 		}
 
 		[UIValue("playDuration")] int playDuration = 3;
+		[UIValue("maxPlayDuration")] static int maxPlayDuration => Config.Instance.misc_extendedPlayTime ? 480 : 120;
+		[UIComponent("slider_playDuration")] readonly SliderSetting playDurationSlider = null;
 		string PlayTimeFormatter(int mins) => mins == 69 ? "69 Nice!" : mins == 96 ? "96.41 的笑容都没你的" : $"{mins} Minutes";
 
 		[UIAction("StartGame")]
@@ -137,7 +146,7 @@ namespace Shaffuru.MenuLogic.UI {
 		}
 
 
-		readonly string version = $"Version {Assembly.GetExecutingAssembly().GetName().Version.ToString(3)} by Kinsi55";
+		readonly string version = $"Version {Assembly.GetExecutingAssembly().GetName().Version.ToString(3)} by Papa Claude";
 
 		[UIComponent("sponsorsText")] readonly CurvedTextMeshPro sponsorsText = null;
 		void OpenSponsorsLink() => Process.Start("https://github.com/sponsors/kinsi55");

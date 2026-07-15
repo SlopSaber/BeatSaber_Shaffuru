@@ -74,6 +74,8 @@ namespace Shaffuru {
 
 		public int ramclearer_frequency = 25;
 
+		public bool misc_extendedPlayTime = false;
+
 
 		void Sanitize() {
 			if(songFilteringConfig.minSeconds < 15)

@@ -25,8 +25,8 @@ namespace Shaffuru.GameLogic {
 			queueProcessor.switchedToNewSong -= QueueProcessor_switchedToNewSong;
 		}
 
-		private void QueueProcessor_switchedToNewSong(ShaffuruSong song, IDifficultyBeatmap beatmap, IReadonlyBeatmapData beatmapData) {
-			void cont() => beatmapSwitcher.SwitchToDifferentBeatmap(beatmap, beatmapData, (float)song.startTime, (float)song.length);
+		private void QueueProcessor_switchedToNewSong(ShaffuruSong song, BeatmapLevel beatmapLevel, BeatmapKey beatmapKey, IReadonlyBeatmapData beatmapData, UnityEngine.AudioClip audioClip) {
+			void cont() => beatmapSwitcher.SwitchToDifferentBeatmap(beatmapLevel, beatmapKey, beatmapData, audioClip, (float)song.startTime, (float)song.length);
 
 			if(delayMs == 0) {
 				cont();

@@ -43,7 +43,7 @@ namespace Shaffuru.GameLogic {
 		UnifiedAudioSource unifiedAudioSource;
 
 		public AudioTimeWrapper(GameplayCoreSceneSetupData sceneSetupData) {
-			songLength = sceneSetupData.difficultyBeatmap.level.beatmapLevelData.audioClip.length;
+			songLength = sceneSetupData.beatmapLevel.songDuration;
 		}
 
 		public void SetAudioSource(UnifiedAudioSource source) {

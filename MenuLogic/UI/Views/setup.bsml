@@ -97,6 +97,9 @@
 					<slider-setting value='ramclearer_frequency' text='RAM clearing frequency' apply-on-change='true' min='25' max='50' integer-only='true'
 						hover-hint='After how many played maps should the RAM be cleared?'
 					/>
+					<toggle-setting value='misc_extendedPlayTime' text='Extended Play Time' apply-on-change='true'
+						hover-hint='Raises the max Play time from 120 to 480 Minutes (8 hours)'
+					/>
 				</macro.as-host>
 				<text color="#EEC" font-size="4" align="Center" word-wrapping="true"
 					text="⚠ You should probably not increase RAM clearing frequency above like 35 unless you either run almost nothing in the background, or have 32GB of RAM"
@@ -147,7 +150,7 @@
 			</horizontal>
 			<vertical horizontal-fit='Unconstrained' pad='2' spacing='2' child-expand-height='false' min-height='30'>
 				<text id='label_songCount' text='J' align='Center'/>
-				<slider-setting value='playDuration' text='Play time' integer-only='true' min='3' max='120' increment='1' formatter='PlayTimeFormatter' apply-on-change='true' show-buttons='true'/>
+				<slider-setting id='slider_playDuration' value='playDuration' text='Play time' integer-only='true' min='3' max='~maxPlayDuration' increment='1' formatter='PlayTimeFormatter' apply-on-change='true' show-buttons='true'/>
 			</vertical>
 			<horizontal anchor-min-y='-0.98' anchor-pos-y='10' ignore-layout='true'>
 				<primary-button id='button_startLevel' on-click='StartGame' text='Start' min-width='20' interactable='false'/>
