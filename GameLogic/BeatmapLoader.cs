@@ -64,15 +64,19 @@ namespace Shaffuru.GameLogic {
 		/*
 		 * NOTE (2024 rewrite): Prior to 1.35ish this used beatmapLevelsModel.GetBeatmapLevelAsync(levelId, ...).
 		 * IPreviewBeatmapLevel/IBeatmapLevel/IDifficultyBeatmap were removed from the game entirely in favor of the
-		 * plain BeatmapLevel + BeatmapKey model. Since every level Shaffuru deals with is already known to SongCore
-		 * (it's either a locally installed custom level, or one we just added to the repository ourselves via
-		 * AddBeatmapToLoadedPreviewBeatmaps above), we can look it up directly instead of going through
-		 * BeatmapLevelLoader's network-capable async path, which is meant for levels the game hasn't indexed yet.
-		 *
-		 * This mirrors the pattern used by BetterSongSearch (SongCore.Loader.BeatmapLevelsModelSO.GetBeatmapLevel).
+		 * plain BeatmapLevel + BeatmapKey model. Every level Shaffuru deals with is either a locally installed
+		 * custom level, or one we just added to the repository ourselves via AddBeatmapToLoadedPreviewBeatmaps, so
+		 * we read it straight back out of that same repository below rather than through any indexing/loading path.
 		 */
 		public Task<BeatmapLevel> LoadBeatmapLevel(string levelId) {
-			var level = SongCore.Loader.BeatmapLevelsModelSO.GetBeatmapLevel(levelId);
+			/*
+			 * NOTE: Previously went through SongCore.Loader.BeatmapLevelsModelSO.GetBeatmapLevel(levelId), which
+			 * failed to find levels that AddBeatmapToLoadedPreviewBeatmaps had written straight into
+			 * beatmapLevelsModel._allLoadedBeatmapLevelsRepository (bypassing SongCore's own internal
+			 * bookkeeping - CustomLevelsById etc). Reading from that same repository directly instead keeps this
+			 * consistent with GetPreviewBeatmapFromLevelId just above, which already reads from it successfully.
+			 */
+			var level = GetPreviewBeatmapFromLevelId(levelId);
 
 			return Task.FromResult(level);
 		}
@@ -86,15 +90,34 @@ namespace Shaffuru.GameLogic {
 		 * LoadBeatmapDataAsync's signature below is confirmed against the real 1.39.1 assemblies.
 		 */
 		public async Task<(IReadonlyBeatmapData beatmapData, UnityEngine.AudioClip audioClip)> LoadAndTransformBeatmapData(BeatmapLevel level, BeatmapKey key) {
-			var beatmapLevelData = (await beatmapLevelLoader.LoadBeatmapLevelDataAsync(
-				level,
-				BeatmapLevelDataVersion.Original,
-				CancellationToken.None
-			)).beatmapLevelData;
+			/*
+			 * The game's own ICustomLevelLoader indexing (both the generic LoadBeatmapLevelDataAsync dispatcher and
+			 * even CheckBeatmapLevelDataFromCustomLevels/LoadBeatmapLevelDataFromCustomLevels) doesn't recognize
+			 * levels we've manually injected into the repository via AddBeatmapToLoadedPreviewBeatmaps - it isn't
+			 * the same bookkeeping SongCore itself uses. SongCore keeps its own separate cache
+			 * (Loader.Instance.LoadedBeatmapLevelsData) populated during its own real scan/load, which is what
+			 * actually has an entry for anything SongCore itself indexed - check that first.
+			 */
+			IBeatmapLevelData beatmapLevelData;
+
+			if(SongCore.Loader.LoadedBeatmapLevelsData.TryGetValue(level.levelID, out beatmapLevelData)) {
+				// Got it straight from SongCore's own cache
+			} else if(beatmapLevelLoader.CheckBeatmapLevelDataFromCustomLevels(level)) {
+				beatmapLevelData = beatmapLevelLoader.LoadBeatmapLevelDataFromCustomLevels(level);
+			} else {
+				beatmapLevelData = (await beatmapLevelLoader.LoadBeatmapLevelDataAsync(
+					level,
+					BeatmapLevelDataVersion.Original,
+					CancellationToken.None
+				)).beatmapLevelData;
+			}
 
 			var playerSpecificSettings = _sceneSetupData.playerSpecificSettings;
 			var gameplayModifiers = _sceneSetupData.gameplayModifiers;
 			var targetEnvironmentInfo = _sceneSetupData.targetEnvironmentInfo;
+
+			if(beatmapLevelData == null)
+				Plugin.Log.Error($"LoadAndTransformBeatmapData: beatmapLevelData is still null for {level.levelID} after trying SongCore's cache, the custom-levels path, and the generic async loader");
 
 			var rawBeatmapData = await beatmapDataLoader.LoadBeatmapDataAsync(
 				beatmapLevelData,

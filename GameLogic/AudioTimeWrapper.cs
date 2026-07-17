@@ -40,10 +40,17 @@ namespace Shaffuru.GameLogic {
 	}
 
 	class AudioTimeWrapper {
+		// Lets app-scoped code (RequestManager/SongDownloaderJob) check "is a song actively playing right now, and if
+		// so pause/resume it" without needing a direct Zenject binding into the (menu-scoped) app container. Safe to
+		// leave stale after a gameplay session ends since .isValid correctly reports false once the underlying
+		// AudioTimeSyncController is torn down with the scene (Unity's overloaded null-check on destroyed objects).
+		public static AudioTimeWrapper current;
+
 		UnifiedAudioSource unifiedAudioSource;
 
 		public AudioTimeWrapper(GameplayCoreSceneSetupData sceneSetupData) {
 			songLength = sceneSetupData.beatmapLevel.songDuration;
+			current = this;
 		}
 
 		public void SetAudioSource(UnifiedAudioSource source) {
