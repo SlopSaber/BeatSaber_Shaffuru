@@ -17,13 +17,8 @@ namespace Shaffuru.Installers {
 			Container.BindInterfacesAndSelfTo<MapPool>().AsSingle();
 			Container.Bind<SongQueue>().AsSingle();
 
-			if(IPA.Loader.PluginManager.GetPluginFromId("CatCore") != null) {
-				Container.BindInterfacesAndSelfTo<CatCoreSource>().AsSingle();
-			} else if(IPA.Loader.PluginManager.GetPluginFromId("BeatSaberPlusCORE")?.HVersion >= new Hive.Versioning.Version("3.4.1")) {
-				Container.BindInterfacesAndSelfTo<BeatSaberPlusSource>().AsSingle();
-			} else if(IPA.Loader.PluginManager.GetPluginFromId("ChatCore") != null) {
-				Container.BindInterfacesAndSelfTo<ChatCoreSource>().AsSingle();
-			}
+			if(IPA.Loader.PluginManager.GetPluginFromId("ChatPlexSDK_BS") != null)
+				Container.BindInterfacesAndSelfTo<ChatPlexSource>().AsSingle();
 
 			if(Container.HasBinding<IChatMessageSource>())
 				Container.BindInterfacesAndSelfTo<RequestManager>().AsSingle().NonLazy();

@@ -98,20 +98,20 @@ namespace Shaffuru.AppLogic {
 				return default;
 
 			var songHash = MapUtil.GetHashOfPreview(level);
-			Dictionary<BeatmapDifficulty, SongCore.Data.ExtraSongData.DifficultyData> mappedExtraData = null;
+			Dictionary<BeatmapDifficulty, SongCore.Data.SongData.DifficultyData> mappedExtraData = null;
 
 			if(songHash != null) {
-				var extraData = SongCore.Collections.RetrieveExtraSongData(songHash);
+				var extraData = SongCore.Collections.GetCustomLevelSongData(level.levelID);
 
 				if(extraData?._difficulties == null)
 					return default;
 
 				foreach(var x in extraData._difficulties) {
 					// We are only allowing Standard characteristic below - So we might as well only collect extradata for those
-					if(x._beatmapCharacteristicName != Anlasser.standardCharacteristic.serializedName)
+					if(x._beatmapCharacteristicName != "Standard")
 						continue;
 
-					mappedExtraData ??= new Dictionary<BeatmapDifficulty, SongCore.Data.ExtraSongData.DifficultyData>();
+					mappedExtraData ??= new Dictionary<BeatmapDifficulty, SongCore.Data.SongData.DifficultyData>();
 
 					mappedExtraData[x._difficulty] = x;
 				}
@@ -119,7 +119,7 @@ namespace Shaffuru.AppLogic {
 
 			// For now we limit to just Standard characteristic. This might not be necessary
 			var standardDiffs = level.GetBeatmapKeys()
-				.Where(k => k.beatmapCharacteristic == Anlasser.standardCharacteristic)
+				.Where(k => k.gameplayType == GameplayType.BeatSaber && k.characteristic == BeatmapCharacteristic.Standard)
 				.Select(k => k.difficulty)
 				.ToArray();
 
@@ -200,8 +200,7 @@ namespace Shaffuru.AppLogic {
 					if(nps < currentFilterConfig.advanced_nps_min || nps > currentFilterConfig.advanced_nps_max)
 						continue;
 
-				// VERIFY: SongDifficulty has no "ranked" bool and MapMods has no Ranked flag - using the
-				// stars > 0 convention (unranked maps report 0 stars in SongDetailsCache) as the closest equivalent.
+				// SongDetailsCache only reports ScoreSaber stars for ranked difficulties.
 				if(currentFilterConfig.advanced_only_ranked && diff.stars <= 0)
 					continue;
 				}

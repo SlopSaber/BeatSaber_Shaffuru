@@ -35,13 +35,11 @@ namespace Shaffuru.MenuLogic {
 		static UBinder<Plugin, System.Random> rngSource;
 
 		static EnvironmentName defaultEnvironment;
-		public static BeatmapCharacteristicSO standardCharacteristic { get; private set; }
 
 		public Anlasser(
 			PlayerDataModel playerDataModel,
 			CustomLevelLoader customLevelLoader,
 			[InjectOptional] MenuTransitionsHelper menuTransitionsHelper,
-			BeatmapCharacteristicCollection beatmapCharacteristicCollection,
 			[InjectOptional] EnvironmentsListModel environmentsListModel,
 			UBinder<Plugin, System.Random> rng
 		) {
@@ -52,7 +50,6 @@ namespace Shaffuru.MenuLogic {
 			rngSource = rng;
 
 			defaultEnvironment = customLevelLoader.CreateEnvironmentName("", customLevelLoader._defaultEnvironmentInfo);
-			standardCharacteristic = beatmapCharacteristicCollection.GetBeatmapCharacteristicBySerializedName("Standard");
 		}
 
 		public event Action<LevelCompletionResults> finishedOrFailedCallback;
@@ -96,9 +93,6 @@ namespace Shaffuru.MenuLogic {
 				beatmapJson = @"{""version"":""3.0.0"",""basicBeatmapEvents"":[{""b"":0,""et"":3,""i"":0,""f"":3}],""colorNotes"":[{""b"":0.5,""x"":1,""y"":0,""c"":1,""d"":1},{""b"":0.5,""x"":1,""y"":1,""c"":1,""d"":1},{""b"":0.5,""x"":1,""y"":2,""c"":1,""d"":1},{""b"":0.5,""x"":2,""y"":0,""c"":0,""d"":8},{""b"":" + a + @",""x"":1,""y"":1,""c"":0,""d"":8}],""bombNotes"":[],""obstacles"":[{""b"":0.4,""x"":3,""y"":0,""d"":3,""w"":1,""h"":5},{""b"":0.4,""x"":0,""y"":0,""d"":3,""w"":1,""h"":5},{""b"":" + a + @",""x"":0,""y"":0,""d"":0.1,""w"":4,""h"":5}],""bpmEvents"":[],""rotationEvents"":[],""sliders"":[],""burstSliders"":[],""waypoints"":[],""colorBoostBeatmapEvents"":[],""lightColorEventBoxGroups"":[],""lightRotationEventBoxGroups"":[],""basicEventTypesWithKeywords"":[],""useNormalEventsAsCompatibleEvents"":true}";
 			}
 
-			// VERIFY: audioSaveDataJson's exact expected schema is unconfirmed - this is a minimal AudioData v4-ish
-			// stub. If the game throws trying to parse this, check what schema BeatmapEditor3D.BeatmapLevelData /
-			// whatever consumes _audioSaveDataJson actually expects (dotPeek/ILSpy on BeatSaber.BeatmapEditor.dll).
 			var audioJson = @"{""version"":""4.0.0"",""songChecksum"":"""",""songSampleCount"":0,""songFrequency"":0,""bpmData"":[],""lufsData"":[]}";
 			var lightshowJson = @"{""version"":""4.0.0"",""waypoints"":[],""basicEvents"":[],""colorBoostEvents"":[],""eventBoxGroups"":[]}";
 
@@ -123,8 +117,8 @@ namespace Shaffuru.MenuLogic {
 				lighters: new[] { "Kinsi55" }
 			);
 
-			var beatmapBasicDatas = new Dictionary<(BeatmapCharacteristicSO, BeatmapDifficulty), BeatmapBasicData> {
-				[(standardCharacteristic, difficulty)] = beatmapBasicData
+			var beatmapBasicDatas = new Dictionary<(GameplayType, BeatmapCharacteristic, BeatmapDifficulty), BeatmapBasicData> {
+				[(GameplayType.BeatSaber, BeatmapCharacteristic.Standard, difficulty)] = beatmapBasicData
 			};
 
 			beatmapLevel = new BeatmapLevel(
@@ -147,7 +141,7 @@ namespace Shaffuru.MenuLogic {
 				beatmapBasicData: beatmapBasicDatas
 			);
 
-			beatmapKey = new BeatmapKey(levelId, standardCharacteristic, difficulty);
+			beatmapKey = new BeatmapKey(levelId, GameplayType.BeatSaber, BeatmapCharacteristic.Standard, difficulty);
 		}
 
 		public void Start(int lengthSeconds, int rngSeed = 0) {
@@ -156,7 +150,7 @@ namespace Shaffuru.MenuLogic {
 
 			UpdateFakeBeatmap(lengthSeconds);
 
-			var endCallback = new Action<StandardLevelScenesTransitionSetupDataSO, LevelCompletionResults>((a, b) => {
+			var endCallback = new Action<StandardLevelScenesTransitionSetupData, LevelCompletionResults>((a, b) => {
 				if(b.levelEndAction == LevelCompletionResults.LevelEndAction.Restart) {
 					Start(lengthSeconds);
 					return;
@@ -175,26 +169,25 @@ namespace Shaffuru.MenuLogic {
 
 			var key = beatmapKey;
 
+			var colorSchemesSettings = playerDataModel.playerData.colorSchemesSettings;
+
 			menuTransitionsHelper.StartStandardLevel(
-				"Shaffuru",
+				GameMode.Solo,
 				in key,
 				beatmapLevel,
-				beatmapLevelData,
 				playerDataModel.playerData.overrideEnvironmentSettings,
-				playerDataModel.playerData.colorSchemesSettings.GetOverrideColorScheme(),
-				playerDataModel.playerData.colorSchemesSettings.GetOverrideColorScheme(),
+				colorSchemesSettings.GetOverrideColorScheme(),
+				colorSchemesSettings.ShouldOverrideLightshowColors(),
 				playerDataModel.playerData.gameplayModifiers,
 				playerDataModel.playerData.playerSpecificSettings,
 				null,
 				environmentsListModel,
-				"Menu",
-				false,
-				false,
+				new GameplayAdditionalInformation("Menu"),
 				null,
 				null,
 				endCallback,
 				null,
-				null
+				beatmapLevelData
 			);
 		}
 	}

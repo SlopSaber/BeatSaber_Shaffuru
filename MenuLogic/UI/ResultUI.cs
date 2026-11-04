@@ -102,12 +102,12 @@ namespace Shaffuru.MenuLogic.UI {
 
 			sessionLength.text = $"Session Length: {ts.Minutes + (ts.Hours * 60)}:{ts.Seconds}";
 
-			var totalnotes = levelCompletionResult.goodCutsCount + levelCompletionResult.badCutsCount + levelCompletionResult.missedCount;
+			var totalnotes = levelCompletionResult.goodCutsCount + levelCompletionResult.badCutsCount + levelCompletionResult.missedCutsCount;
 			songCount.text = $"Songs Played: {playedSongList.list.Count} ({totalnotes} Notes)";
 
-			var score = levelCompletionResult.totalCutScore == 0 ? 0f : levelCompletionResult.multipliedScore / levelCompletionResult.maxCutScore;
+			var score = levelCompletionResult.totalCutScore == 0 ? 0f : levelCompletionResult.score.multiplied / (float)levelCompletionResult.maxCutScore;
 
-			sessionAcc.text = string.Format("Score: {0:n0}", levelCompletionResult.multipliedScore);
+			sessionAcc.text = string.Format("Score: {0:n0}", levelCompletionResult.score.multiplied);
 
 			songList.Data.Clear();
 			songList.TableView.ReloadData();

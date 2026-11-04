@@ -31,6 +31,8 @@ namespace Shaffuru {
 
 			var sp = Sprite.Create(Tex2D, new Rect(0, 0, Tex2D.width, Tex2D.height), Vector2.zero, 100);
 
+			SongDownloaderJob.MigrateLegacyDownloads();
+
 			SongCore.Collections.AddSeparateSongFolder("Shaffuru Downloads", SongDownloaderJob.ShaffuruDownloadPath, SongCore.Data.FolderLevelPack.NewPack, sp, false, false);
 		}
 

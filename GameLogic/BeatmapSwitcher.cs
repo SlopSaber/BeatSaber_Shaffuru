@@ -34,6 +34,7 @@ namespace Shaffuru.GameLogic {
 		public readonly CustomAudioSource customAudioSource;
 
 		readonly BeatmapObjectSpawnMovementData beatmapObjectSpawnMovementData;
+		readonly VariableMovementDataProvider variableMovementDataProvider;
 
 		readonly RamCleaner ramCleaner;
 
@@ -63,22 +64,29 @@ namespace Shaffuru.GameLogic {
 
 			if(beatmapObjectSpawnController != null) {
 				beatmapObjectSpawnMovementData = beatmapObjectSpawnController.beatmapObjectSpawnMovementData;
-				startBeatmapCallbackAheadTime = beatmapObjectSpawnMovementData.spawnAheadTime;
+				variableMovementDataProvider = beatmapObjectSpawnController._variableMovementDataProvider as VariableMovementDataProvider;
+				startBeatmapCallbackAheadTime = variableMovementDataProvider?.spawnAheadTime ?? 0f;
 			}
 		}
 
-		void UpdateBeatmapObjectSpawnControllerInitData(float bpm, float njs, float mapOffset, int noteLinesCount) {
+		void UpdateBeatmapObjectSpawnControllerInitData(float bpm, float njs, float mapOffset, IReadonlyBeatmapData beatmapData) {
 			BeatmapObjectSpawnControllerHelpers.GetNoteJumpValues(sceneSetupData.playerSpecificSettings, mapOffset, out var noteJumpValueType, out var noteJumpValue);
-			beatmapObjectSpawnMovementData.Init(
-				// If this changes the game would probably explode - I dont think it does ever tho?
-				noteLinesCount,
+			// This (probably?) wont work with 360 - too bad!
+			beatmapObjectSpawnMovementData.Init(beatmapData.numberOfLines, jumpOffsetYProvider, Vector3.right);
+
+			var minRelativeNoteJumpSpeed = 0f;
+			foreach(var item in beatmapData.GetBeatmapDataItems<NoteJumpSpeedEventData>(0))
+				minRelativeNoteJumpSpeed = Mathf.Min(minRelativeNoteJumpSpeed, item.relativeNoteJumpSpeed);
+
+			variableMovementDataProvider?.Init(
+				beatmapObjectSpawnMovementData.startHalfJumpDurationInBeats,
+				beatmapObjectSpawnMovementData.maxHalfJumpDistance,
 				njs,
+				minRelativeNoteJumpSpeed,
 				bpm,
 				noteJumpValueType,
 				noteJumpValue,
-				jumpOffsetYProvider,
-				// This (probably?) wont work with 360 - too bad!
-				Vector3.right,
+				beatmapObjectSpawnMovementData.centerPos,
 				Vector3.forward
 			);
 			beatmapCallbacksController.TriggerBeatmapEvent(new BPMChangeBeatmapEventData(0, bpm));
@@ -202,20 +210,16 @@ namespace Shaffuru.GameLogic {
 
 			if(beatmapObjectSpawnController != null) {
 				// Update to the new maps stuffs
-				// VERIFY: see the "VERIFY" note on BeatmapLoader.GetDifficultyBeatmapData - this replaces the old
-				// IDifficultyBeatmap.noteJumpMovementSpeed/.noteJumpStartBeatOffset/.difficulty access
 				var replacementBeatmapBasicData = BeatmapLoader.GetDifficultyBeatmapData(replacementLevel, replacementKey);
 
-				var njs = replacementBeatmapBasicData.noteJumpMovementSpeed;
-				if(njs == 0)
-					njs = BeatmapDifficultyMethods.NoteJumpMovementSpeed(replacementKey.difficulty);
+				var njs = replacementKey.difficulty.NoteJumpMovementSpeed(replacementBeatmapBasicData.noteJumpMovementSpeed, sceneSetupData.gameplayModifiers.fastNotes);
 
 				// This updates the spawnAheadTime amonguser things
 				UpdateBeatmapObjectSpawnControllerInitData(
 					replacementLevel.beatsPerMinute,
 					njs,
 					replacementBeatmapBasicData.noteJumpStartBeatOffset,
-					replacementBeatmapData.numberOfLines
+					replacementBeatmapData
 				);
 			}
 
@@ -226,8 +230,8 @@ namespace Shaffuru.GameLogic {
 					// I hate that i actually have to do this. Writes the correct / new aheadTime to the callbacks for the object spawns
 					if(x.Key == startBeatmapCallbackAheadTime) {
 						var cbs = v._callbacks;
-						aheadTime = beatmapObjectSpawnMovementData.spawnAheadTime;
-						foreach(var cbl in cbs.Values) {
+						aheadTime = variableMovementDataProvider?.spawnAheadTime ?? aheadTime;
+						foreach(var cbl in cbs) {
 							cbl.ForEach(cb => { SETTER_BeatmapDataCallbackWrapper_aheadTime(ref cb) = aheadTime; });
 						}
 					}

@@ -15,7 +15,32 @@ using UnityEngine.Networking;
 namespace Shaffuru.AppLogic {
 	struct SongDownloaderJob : IJob {
 		public static readonly HashSet<uint> downloadingMaps = new HashSet<uint>();
-		public static readonly string ShaffuruDownloadPath = Path.Combine(Directory.GetCurrentDirectory(), CustomLevelPathHelper.customLevelsDirectoryPath, "SHAFFURU_DOWNLOADS");
+		public static readonly string ShaffuruDownloadPath = Path.Combine(IPA.Utilities.UnityGame.UserDataPath, "Shaffuru", "Downloads");
+		static readonly string LegacyDownloadPath = Path.Combine(Directory.GetCurrentDirectory(), CustomLevelPathHelper.customLevelsDirectoryPath, "SHAFFURU_DOWNLOADS");
+
+		// Downloads used to live inside CustomLevels, where SongCore also scans the container folder as a level.
+		public static void MigrateLegacyDownloads() {
+			try {
+				Directory.CreateDirectory(ShaffuruDownloadPath);
+
+				if(!Directory.Exists(LegacyDownloadPath))
+					return;
+
+				foreach(var dir in Directory.GetDirectories(LegacyDownloadPath)) {
+					var target = Path.Combine(ShaffuruDownloadPath, Path.GetFileName(dir));
+
+					if(Directory.Exists(target))
+						Directory.Delete(dir, true);
+					else
+						Directory.Move(dir, target);
+				}
+
+				if(Directory.GetFileSystemEntries(LegacyDownloadPath).Length == 0)
+					Directory.Delete(LegacyDownloadPath);
+			} catch(Exception ex) {
+				Plugin.Log.Warn($"Could not move old downloads out of CustomLevels: {ex.Message}");
+			}
+		}
 
 		uint beatsaverId;
 
@@ -72,10 +97,7 @@ namespace Shaffuru.AppLogic {
 							pausedFor.Pause();
 
 						try {
-							// VERIFY: SongCore.Loader.LoadCustomLevel's second parameter is SongCore.Data.SongFolderEntry -
-							// I don't have its shape confirmed, `default` is a guess (fine if it's a reference type and
-							// null is an acceptable "just use defaults" value, wrong if it's a struct requiring real fields).
-							var result = SongCore.Loader.LoadCustomLevel(p, default);
+							var result = SongCore.Loader.LoadCustomLevel(p);
 
 							if(result == null) {
 								Plugin.Log.Error($"Downloaded {mapId} to {p} but SongCore.Loader.LoadCustomLevel failed to load it (returned null)");
@@ -119,7 +141,7 @@ namespace Shaffuru.AppLogic {
 				while(!www.isDone)
 					Thread.Sleep(50);
 
-				if(www.isHttpError || www.isNetworkError)
+				if(www.result != UnityWebRequest.Result.Success)
 					return null;
 
 				return b;

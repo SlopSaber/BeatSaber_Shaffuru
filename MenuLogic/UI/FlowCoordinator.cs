@@ -90,10 +90,6 @@ namespace Shaffuru.MenuLogic.UI {
 		static ShaffuruFlowCoordinator instance;
 
 		public void Initialize() {
-			// VERIFY: MenuButtons no longer has a directly-declared "instance" member - it inherits from
-			// BeatSaberMarkupLanguage.Util.ZenjectSingleton<MenuButtons>. Guessing "Instance" (capital I) based on
-			// the same convention SongCore.Loader uses, but this wasn't directly confirmed - if wrong, dump
-			// ZenjectSingleton`1 with the inspector tool to see its actual static accessor.
 			if(instance == null)
 				MenuButtons.Instance.RegisterButton(new MenuButton("Shaffuru", " iufrkjedsfios", () => {
 					instance.gameplaySetupViewController.Setup(true, true, true, false, PlayerSettingsPanelController.PlayerSettingsPanelLayout.Singleplayer);

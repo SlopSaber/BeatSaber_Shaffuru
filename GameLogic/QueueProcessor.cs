@@ -104,7 +104,7 @@ namespace Shaffuru.GameLogic {
 
 				// BeatmapLevel.GetBeatmapKeys() replaces the old difficultyBeatmapSets/difficultyBeatmaps traversal
 				foreach(var key in outLevel.GetBeatmapKeys()) {
-					if(key.beatmapCharacteristic != Anlasser.standardCharacteristic)
+					if(key.gameplayType != GameplayType.BeatSaber || key.characteristic != BeatmapCharacteristic.Standard)
 						continue;
 
 					if((int)key.difficulty != diffIndex)
